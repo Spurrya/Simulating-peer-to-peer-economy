@@ -1,1 +1,1 @@
-web: python Viz_MoneyModel.py
+web: python3 Viz_MoneyModel.py

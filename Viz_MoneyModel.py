@@ -70,5 +70,5 @@ server = ModularServer(EnergyModel, [grid1, grid2], "Money Model",
    "probability_of_converting_into_producer":0.05,
    "probability_of_neighbour_converting_into_producer":0.001
 })
-server.port = 443
+server.port = 5000
 server.launch()
