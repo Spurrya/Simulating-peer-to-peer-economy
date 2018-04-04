@@ -67,7 +67,7 @@ server = ModularServer(EnergyModel, [grid1, grid2], "Money Model",
    "price_of_alternative_fuels":7,
    "price_of_solar_panel":150,
    "price_of_electricity_from_producer": 1,
-   "probability_of_converting_into_producer":0.1,
+   "probability_of_converting_into_producer":0.05,
    "probability_of_neighbour_converting_into_producer":0.001
 })
 server.port = 8888
