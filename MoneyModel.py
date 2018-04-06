@@ -18,6 +18,8 @@ def number_of_people_whose_energy_requirement_are_fulfilled(model):
             i = i + 1
     return i
 
+def standard_deviation_of_savings(model):
+    return np.std([agent.savings for agent in model.schedule.agents])
 
 class EnergyModel(Model):
     """A model with some number of agents."""   
@@ -39,7 +41,6 @@ class EnergyModel(Model):
         probability_of_converting_into_producer,
         probability_of_neighbour_converting_into_producer
         ):
-
         self.num_agents = (width * height)
         self.running = True
         self.grid = MultiGrid(height, width, True)
@@ -72,11 +73,16 @@ class EnergyModel(Model):
                 self.schedule.add(a)
                 self.grid.place_agent(a, (x, y))
                 i = i +1
-
+    k = 0
     def step(self):
         self.schedule.step()
         self.datacollector.collect(self)
-
+        self.k = self.k + 1
+        if(number_of_people_whose_energy_requirement_are_fulfilled(self) >= self.num_agents*0.80):
+            print("=====")
+            print("The selling price:" + str(self.price_of_electricity_from_producer))
+            print("Time it took:" + str(self.k) )
+            print("Std:" + str(standard_deviation_of_savings(self)))
     def run_model(self, n):
         for i in range(n):
             self.step()
@@ -110,6 +116,9 @@ class EnergyAgent(Agent):
         self.probability_of_neighbour_converting_into_producer = model.probability_of_neighbour_converting_into_producer
         self.model = model
 
+    def probability_of_buying_kerosene(self):
+        return random.random() < 0.1
+
     def update_savings(self):
         self.savings = self.savings + self.today_money
 
@@ -120,9 +129,9 @@ class EnergyAgent(Agent):
                 self.type = EnergyUsageType.PRODUCER
                 self.savings = self.savings - self.price_of_solar_panel
 
-                neighbours = self.model.grid.iter_neighbors([self.x,self.y],include_center=False, moore=True, radius=1)
+                neighbours = self.model.grid.iter_neighbors([self.x,self.y],include_center=False, moore=True, radius=2)
                 for neighbour in neighbours:
-                    if(neighbour.type == EnergyUsageType.KEROSENE):
+                    if(neighbour.type == EnergyUsageType.KEROSENE and self.price_of_alternative_fuels > self.price_of_electricity_from_producer):
                         neighbour.type = EnergyUsageType.CONSUMER
 
             else:
@@ -148,27 +157,47 @@ class EnergyAgent(Agent):
 
 
     def buy_kerosene(self):
-        while(self.today_energy_needs > 0 and self.today_money > self.price_of_alternative_fuels):
-            self.energy_owned = self.energy_owned + 11
-            self.today_money = self.today_money - self.price_of_alternative_fuels
+        while(self.today_energy_needs > 0 and (self.today_money > self.price_of_alternative_fuels or self.savings > self.price_of_alternative_fuels)):
+            
+            # Buy electricity
+            self.energy_owned = self.energy_owned + 1
+
+            # Exchange Money
+            if(self.today_money > self.price_of_alternative_fuels ):
+                self.today_money = self.today_money - self.price_of_alternative_fuels
+            elif(self.savings > self.price_of_alternative_fuels):
+                self.savings = self.savings - self.price_of_alternative_fuels
+
+
+            #self.today_money = self.today_money - self.price_of_alternative_fuels
+            
+            # Consume Electricity
+            self.today_energy_needs = self.today_energy_needs - 1
+            self.energy_owned = self.energy_owned - 1
 
 
     def trade_electricity(self):
         if(self.type == EnergyUsageType.PRODUCER):
-            neighbours = self.model.grid.get_neighbors([self.x,self.y],include_center=False, moore=True, radius=3)
+            neighbours = self.model.grid.get_neighbors([self.x,self.y],include_center=False, moore=True, radius=2)
 
             while(self.energy_owned > self.today_energy_needs):
                 i = 0
                 j = 0
                 for neighbour in neighbours:
                     j = j + 1
-                    if(neighbour.today_energy_needs > 0 and neighbour.today_money > neighbour.price_of_electricity_from_producer):
+                    if(neighbour.today_energy_needs > 0 and (neighbour.savings > neighbour.price_of_electricity_from_producer or neighbour.today_money > neighbour.price_of_electricity_from_producer)):
+                        # Buy electricity
                         self.energy_owned = self.energy_owned - 1;
                         neighbour.energy_owned = neighbour.energy_owned + 1;
 
-                        self.today_money = neighbour.today_money - neighbour.price_of_electricity_from_producer
-                        neighbour.today_money = neighbour.today_money - neighbour.price_of_electricity_from_producer
+                        # Exchange Money
+                        self.today_money = neighbour.today_money + neighbour.price_of_electricity_from_producer
+                        if(neighbour.today_money > neighbour.price_of_electricity_from_producer ):
+                            neighbour.today_money = neighbour.today_money - neighbour.price_of_electricity_from_producer
+                        elif(neighbour.savings > neighbour.price_of_electricity_from_producer):
+                            neighbour.savings = neighbour.savings - neighbour.price_of_electricity_from_producer
 
+                        #Consume
                         neighbour.today_energy_needs = neighbour.today_energy_needs - 1
                         neighbour.energy_owned = neighbour.energy_owned - 1
                     else:
@@ -188,17 +217,19 @@ class EnergyAgent(Agent):
                 self.energy_owned = self.energy_owned -1;
                 self.today_energy_needs = self.today_energy_needs - 1;
 
+
     def update_prob_of_converting(self):
-        neighbours = self.model.grid.iter_neighbors([self.x,self.y],include_center=True, moore=True, radius=1)
+        neighbours = self.model.grid.iter_neighbors([self.x,self.y],include_center=True, moore=True, radius=2)
         i = 0
         for neighbour in neighbours:
             if(neighbour.today_energy_needs > 0):
                 i = i+ 1
 
-        if(i > 1):
+        if(i > 0):
             self.probability_of_convertion = self.probability_of_converting_into_producer
         else:
             self.probability_of_convertion = self.probability_of_neighbour_converting_into_producer
+
 
     def advance(self):
         self.today_energy_needs = self.daily_energy_needs
@@ -211,22 +242,23 @@ class EnergyAgent(Agent):
 
         self.consume_own_needs_producer()
 
+        
         self.trade_electricity()
+        if(self.probability_of_buying_kerosene()):
+            self.buy_kerosene()
 
-
-        #Left over needs buy kerosene
-        self.buy_kerosene()
 
         if(self.today_money < 0):
             self.today_money = 0
 
-        if(self.today_energy_needs != 0):
-            print("======")
-            print("I am a ," + str(self.type))
-            print("I am at," + str(self.x) + ","+str(self.y))
-            print("I made today, $" + str(self.today_money))
-            print("I own energy," + str(self.energy_owned))
-            print("For today, I need, this much energy " + str(self.today_energy_needs))
+
+        # if(self.today_energy_needs != 0):
+        #     print("======")
+        #     print("I am a ," + str(self.type))
+        #     print("I am at," + str(self.x) + ","+str(self.y))
+        #     print("I made today, $" + str(self.today_money))
+        #     print("I own energy," + str(self.energy_owned))
+        #     print("For today, I need, this much energy " + str(self.today_energy_needs))
 
 
         self.update_savings()
